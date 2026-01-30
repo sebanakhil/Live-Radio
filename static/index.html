@@ -1,1 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebRTC Radio</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding-top: 50px; }
+        .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 350px; text-align: center; }
+        .btn { padding: 12px 24px; border: none; border-radius: 25px; cursor: pointer; font-weight: bold; transition: 0.3s; margin-top: 10px; width: 100%; }
+        .btn-primary { background: #1a73e8; color: white; }
+        .btn-primary:hover { background: #1557b0; }
+        .btn-stop { background: #ea4335; color: white; }
+        .status-badge { display: inline-block; padding: 5px 12px; border-radius: 15px; font-size: 0.8rem; margin-bottom: 1rem; }
+        .live { background: #e6f4ea; color: #1e8e3e; }
+        .offline { background: #fce8e6; color: #d93025; }
+        #remoteAudio { display: none; }
+    </style>
+</head>
+<body>
 
+    <div class="card" style="margin-bottom: 20px; border-top: 5px solid #1a73e8;">
+        <h3>🎙️ Broadcaster Control</h3>
+        <button id="startBroadcast" class="btn btn-primary">Start Live Stream</button>
+        <button id="stopBroadcast" class="btn btn-stop" style="display:none;">Stop Streaming</button>
+        <p id="bStatus" style="font-size: 0.8rem; color: #666;"></p>
+    </div>
+
+    <div class="card">
+        <div id="statusBadge" class="status-badge offline">Checking...</div>
+        <h2 id="channelName">No Active Channel</h2>
+        
+        <div id="listenerUI" style="display:none;">
+            <button id="startListen" class="btn btn-primary">▶️ Click to Play</button>
+            <button id="stopListen" class="btn btn-stop" style="display:none;">⏹️ Stop Listening</button>
+        </div>
+        <audio id="remoteAudio" autoplay controls></audio>
+    </div>
+
+    <script>
+        const iceServers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+        let pc = null;
+        let localStream = null;
+
+        // --- BROADCASTER LOGIC ---
+        document.getElementById('startBroadcast').onclick = async () => {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            pc = new RTCPeerConnection(iceServers);
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            const response = await fetch('/offer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type, role: 'broadcaster' })
+            });
+
+            const answer = await response.json();
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            
+            document.getElementById('startBroadcast').style.display = 'none';
+            document.getElementById('stopBroadcast').style.display = 'block';
+            document.getElementById('bStatus').innerText = "You are currently LIVE!";
+        };
+
+        document.getElementById('stopBroadcast').onclick = () => location.reload();
+
+        // --- LISTENER LOGIC (POLLING) ---
+        async function updateChannelStatus() {
+            try {
+                const res = await fetch('/status');
+                const data = await res.json();
+                
+                const badge = document.getElementById('statusBadge');
+                const nameLabel = document.getElementById('channelName');
+                const ui = document.getElementById('listenerUI');
+
+                if (data.is_live) {
+                    badge.innerText = "● LIVE"; badge.className = "status-badge live";
+                    nameLabel.innerText = data.channel_name;
+                    ui.style.display = 'block';
+                } else {
+                    badge.innerText = "OFFLINE"; badge.className = "status-badge offline";
+                    nameLabel.innerText = "No Active Channel";
+                    ui.style.display = 'none';
+                }
+            } catch (e) {}
+        }
+
+        setInterval(updateChannelStatus, 2000);
+
+        document.getElementById('startListen').onclick = async () => {
+            const playBtn = document.getElementById('startListen');
+            const stopBtn = document.getElementById('stopListen');
+            
+            pc = new RTCPeerConnection(iceServers);
+            pc.addTransceiver('audio', { direction: 'recvonly' });
+
+            pc.ontrack = (event) => {
+                const audio = document.getElementById('remoteAudio');
+                audio.srcObject = event.streams[0];
+                playBtn.innerText = "🔊 Now Listening...";
+                playBtn.disabled = true;
+                stopBtn.style.display = 'block';
+            };
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            const response = await fetch('/offer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type, role: 'listener' })
+            });
+            
+            const answer = await response.json();
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        };
+
+        document.getElementById('stopListen').onclick = () => location.reload();
+    </script>
+</body>
+</html>
