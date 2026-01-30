@@ -31,19 +31,6 @@ async def offer(request):
 
     pc = RTCPeerConnection(configuration=configuration)
     pcs.add(pc)
-    # 2. PLACE THE PORT FIX HERE (Before the handshake)
-    try:
-        # We ensure a transceiver exists so the gatherer is initialized
-        if not pc.getTransceivers():
-            pc.addTransceiver("audio") 
-        
-        # Access the internal ice_gatherer to force the port range
-        pc._ice_gatherer._port_range = (10000, 10005)
-        print(f"DEBUG: Forced port range (10000-10005) for {role}")
-    except Exception as e:
-        print(f"DEBUG: Failed to set port range for {role}: {e}")
-
-
 
     @pc.on("iceconnectionstatechange")
     async def on_state_change():
