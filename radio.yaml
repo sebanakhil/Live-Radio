@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: radio-station
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: radio
+  template:
+    metadata:
+      labels:
+        app: radio
+    spec:
+      # --- THE CRITICAL FIX ---
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      # ------------------------
+      containers:
+      - name: radio-app
+        image: <your-acr-name>.azurecr.io/radio-app:latest
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: radio-lb
+spec:
+  type: LoadBalancer
+  selector:
+    app: radio
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
